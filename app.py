@@ -7,11 +7,20 @@ import re
 import numpy as np
 import tensorflow as tf
 
+
+# Import Azure Image Analysis Service (Add from Tianyu)
+from azure.cognitiveservices.vision.computervision import ComputerVisionClient
+from msrest.authentication import CognitiveServicesCredentials
+
+cog_key = '2f07ed8b7d6f418db7f9e3e70da1e5b2'
+cog_endpoint = 'https://cognitivtianyuzhou.cognitiveservices.azure.com/'
+
+
 # Keras
-from keras.applications.imagenet_utils import preprocess_input, decode_predictions
-from keras.models import load_model
-from keras.preprocessing import image
-from keras.applications.resnet50 import ResNet50
+from tensorflow.keras.applications.imagenet_utils import preprocess_input, decode_predictions
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing import image
+from tensorflow.keras.applications.resnet50 import ResNet50
 
 
 # Flask utils
@@ -25,9 +34,7 @@ app = Flask(__name__)
 # Model saved with Keras model.save()
 # MODEL_PATH = 'models/your_model.h5'
 
-model = ResNet50(weights="imagenet")
-
-graph = tf.get_default_graph()
+graph = tf.compat.v1.get_default_graph()
 
 def model_predict(img_path, model):
     img = image.load_img(img_path, target_size=(224, 224))
@@ -66,6 +73,7 @@ def upload():
     with graph.as_default():
         if request.method == 'POST':
             # Get the file from post request
+
             f = request.files['image']
 
             # Save the file to ./uploads
@@ -74,14 +82,20 @@ def upload():
                 basepath, 'uploads', secure_filename(f.filename))
             f.save(file_path)
 
-            # Make prediction
-            preds = model_predict(file_path, model)
+            # Make prediction by using cognitive service from Azure (Tianyu)
+            computervision_client = ComputerVisionClient(cog_endpoint, CognitiveServicesCredentials(cog_key))
 
-            # Process your result for human
-            # pred_class = preds.argmax(axis=-1)            # Simple argmax
-            pred_class = decode_predictions(preds, top=1)   # ImageNet Decode
-            result = str(pred_class[0][0][1])               # Convert to string
-            return result
+            # Get a description from the computer vision service (Tianyu)
+            image_stream = open(file_path, "rb")
+            description = computervision_client.describe_image_in_stream(image_stream)
+            caption_text = ''
+            if (len(description.captions) == 0):
+                caption_text = 'No caption detected'
+            else:
+                for caption in description.captions:
+                    caption_text = caption_text + " '{}'\n(Confidence: {:.2f}%)".format(caption.text, caption.confidence * 100)
+
+            return caption_text
         return None
 
 @app.route("/movementclassification", methods=["GET"])
